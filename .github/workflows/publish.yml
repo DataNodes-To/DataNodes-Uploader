@@ -1,0 +1,50 @@
+name: Publish release
+
+# Creates the public, versioned release using THIS repo's own GITHUB_TOKEN, so
+# the release is authored by github-actions[bot] (the org's bot) rather than a
+# personal account. The private build repo stages the exe here (as a hidden
+# prerelease) and then fires this via repository_dispatch.
+on:
+  repository_dispatch:
+    types: [publish]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the staged exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download build-staging --repo "${{ github.repository }}" --pattern '*.exe' --dir dist
+          ls -l dist
+
+      - name: Publish versioned release (authored by github-actions[bot])
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.client_payload.version }}
+          name: DataNodes Uploader v${{ github.event.client_payload.version }}
+          make_latest: "true"
+          body: |
+            DataNodes Uploader — build v${{ github.event.client_payload.version }}.
+
+            Double-click Windows app to upload new files, replace existing ones
+            in place, and organise them into folders. Download **DataNodes
+            Uploader.exe** below and run it. The app updates itself when a newer
+            build is released.
+
+            Always-latest download:
+            https://github.com/DataNodes-To/DataNodes-Uploader/releases/latest/download/DataNodes.Uploader.exe
+          files: dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove the staging prerelease
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete build-staging --repo "${{ github.repository }}" --yes --cleanup-tag || true
